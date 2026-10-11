@@ -1,0 +1,7 @@
+{
+  "name": "catalyst-website-launcher",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix extract run dev"
+  }
+}
