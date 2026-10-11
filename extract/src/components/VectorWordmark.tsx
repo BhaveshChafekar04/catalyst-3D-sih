@@ -289,6 +289,35 @@ function buildAtlas(
   return { canvas, cssW: w * cssPerPx, cssH: h * cssPerPx };
 }
 
+function measureTextMetrics(
+  text: string,
+  f: FontSpec
+): { wRatio: number; hRatio: number } {
+  const probe = document.createElement("canvas").getContext("2d");
+  if (!probe) return { wRatio: 5.75, hRatio: 1.25 };
+
+  const testPx = 100;
+  probe.font = fontString(f, testPx);
+  try {
+    if ("letterSpacing" in probe) {
+      (probe as unknown as { letterSpacing: string }).letterSpacing =
+        f.letterSpacing;
+    }
+  } catch {}
+
+  const m = probe.measureText(text);
+  const asc = m.actualBoundingBoxAscent || testPx * 0.8;
+  const desc = m.actualBoundingBoxDescent || testPx * 0.22;
+  const pad = testPx * 0.12;
+  const totalW = m.width + pad * 2;
+  const totalH = asc + desc + pad * 2;
+
+  return {
+    wRatio: Math.max(0.5, totalW / testPx),
+    hRatio: Math.max(0.5, totalH / testPx),
+  };
+}
+
 type HandleGroup = { size: number; spread: number; labels: boolean };
 
 const HANDLE_DEFAULTS: HandleGroup = { size: 109, spread: 27, labels: true };
@@ -378,6 +407,22 @@ export default function VectorWordmark(props: VectorWordmarkProps) {
   live.current.speed = speed;
   live.current.damping = damping;
   live.current.hg = hg;
+
+  const metricsCache = useRef<{ key: string; wRatio: number; hRatio: number }>({
+    key: "",
+    wRatio: 5.75,
+    hRatio: 1.25,
+  });
+
+  const getCachedMetrics = (textVal: string, f: FontSpec) => {
+    const key = `${textVal}|${f.family}|${f.weight}|${f.style}|${f.letterSpacing}`;
+    if (metricsCache.current.key === key) {
+      return metricsCache.current;
+    }
+    const measured = measureTextMetrics(textVal, f);
+    metricsCache.current = { key, ...measured };
+    return metricsCache.current;
+  };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -469,9 +514,27 @@ export default function VectorWordmark(props: VectorWordmarkProps) {
     let atlasKey = "";
 
     function drawFontPx() {
-      // Scale gracefully to fill the hero container width smoothly
+      const L = live.current;
+      const f = L.fontSpec;
+      const textVal = L.text || "CATALYST";
+
+      const metrics = getCachedMetrics(textVal, f);
+      // Ensure comfortable horizontal margin so text never hugs or cuts off against screen edges:
+      // Mobile screens (<640px) leave 12% total margin (88% width); larger screens allow up to 94%
+      const maxWFactor = boxW < 640 ? 0.88 : 0.94;
+      const maxHFactor = 0.78; // Maintain vertical headroom for shader deflection and bounding indicators
+
+      const maxFittingWidthPx = (boxW * maxWFactor) / metrics.wRatio;
+      const maxFittingHeightPx = (boxH * maxHFactor) / metrics.hRatio;
+
+      // Desktop scaling target based on container width vs REF_WIDTH
       const baseScale = boxW / REF_WIDTH;
-      return live.current.fontSpec.size * Math.max(0.4, Math.min(1.4, baseScale));
+      const baseTarget = f.size * Math.min(1.3, Math.max(0.6, baseScale));
+
+      // Font size dynamically fits the available container width & height, preserving desktop appearance
+      const optimal = Math.min(baseTarget, maxFittingWidthPx, maxFittingHeightPx);
+
+      return Math.max(16, optimal);
     }
 
     function resize() {
@@ -571,7 +634,12 @@ export default function VectorWordmark(props: VectorWordmarkProps) {
       target.x = (e.clientX - r.left) / r.width;
       target.y = 1 - (e.clientY - r.top) / r.height;
     };
+    const onLeave = () => {
+      hasPointer = false;
+    };
     host.addEventListener("pointermove", onMove);
+    host.addEventListener("pointerleave", onLeave);
+    host.addEventListener("pointercancel", onLeave);
 
     let raf = 0;
     let last = 0;
@@ -591,7 +659,7 @@ export default function VectorWordmark(props: VectorWordmarkProps) {
         f.style,
         f.letterSpacing,
         dpr,
-        Math.ceil(Math.max(8, drawFontPx()) / 64),
+        Math.ceil(Math.max(8, drawFontPx()) / 16),
       ].join("|");
       if (key !== atlasKey) {
         atlasKey = key;
@@ -645,7 +713,9 @@ export default function VectorWordmark(props: VectorWordmarkProps) {
     function writeLabels() {
       const L = live.current;
       const aspect = boxW / boxH;
-      const half = L.hg.size / 2;
+      const responsiveHandleSize =
+        L.hg.size * Math.min(1, Math.max(0.45, boxW / 800));
+      const half = responsiveHandleSize / 2;
       for (let i = 0; i < HANDLES; i += 1) {
         const el = labelRefs.current[i];
         if (!el) continue;
@@ -653,9 +723,9 @@ export default function VectorWordmark(props: VectorWordmarkProps) {
         const by = verts[i].y;
         const gx = Math.round(clamp(bx * 100, 0, 100));
         const gy = Math.round(clamp(by * 100, 0, 100));
-        el.style.transform = `translate(${bx * boxW - half}px, ${
-          (1 - by) * boxH - half
-        }px)`;
+        const labelX = clamp(bx * boxW - half, 4, Math.max(4, boxW - 55));
+        const labelY = clamp((1 - by) * boxH - half, 4, Math.max(4, boxH - 24));
+        el.style.transform = `translate(${labelX}px, ${labelY}px)`;
         el.style.opacity = String(LABEL_MAX);
         el.textContent = `${gx}, ${gy}`;
       }
@@ -666,6 +736,10 @@ export default function VectorWordmark(props: VectorWordmarkProps) {
       const tc = parseColor(L.textColor, [1, 1, 1, 1]);
       const sc = parseColor(L.shade, [0.22, 0.24, 0.3, 1]);
       const ac = L.accentRGBA;
+      const responsiveHandleSize =
+        L.hg.size * Math.min(1, Math.max(0.45, boxW / 800));
+      const responsiveReach =
+        L.reach * Math.min(1, Math.max(0.45, boxW / 800));
 
       gl!.viewport(0, 0, bufW, bufH);
       gl!.useProgram(prog);
@@ -676,14 +750,14 @@ export default function VectorWordmark(props: VectorWordmarkProps) {
       const px = Math.max(8, drawFontPx());
       gl!.uniform2f(U.atlas, atlasRatioW * px, atlasRatioH * px);
       gl!.uniform2f(U.ptr, eased.x, eased.y);
-      gl!.uniform1f(U.reach, Math.max(1, L.reach) / boxW);
+      gl!.uniform1f(U.reach, Math.max(1, responsiveReach) / boxW);
       gl!.uniform3f(U.text, tc[0], tc[1], tc[2]);
       gl!.uniform3f(U.shade, sc[0], sc[1], sc[2]);
       gl!.uniform4f(U.accent, ac[0], ac[1], ac[2], ac[3]);
       gl!.uniform2f(U.v0, verts[0].x, verts[0].y);
       gl!.uniform2f(U.v1, verts[1].x, verts[1].y);
       gl!.uniform2f(U.v2, verts[2].x, verts[2].y);
-      gl!.uniform1f(U.half, L.hg.size / 2 / boxH);
+      gl!.uniform1f(U.half, responsiveHandleSize / 2 / boxH);
       gl!.drawArrays(gl!.TRIANGLE_STRIP, 0, 4);
     }
 
@@ -718,7 +792,10 @@ export default function VectorWordmark(props: VectorWordmarkProps) {
     if (typeof document !== "undefined" && document.fonts) {
       document.fonts.ready.then(
         () => {
-          if (alive) atlasKey = "";
+          if (alive) {
+            metricsCache.current.key = "";
+            atlasKey = "";
+          }
         },
         () => {}
       );
@@ -732,6 +809,8 @@ export default function VectorWordmark(props: VectorWordmarkProps) {
       if (raf) cancelAnimationFrame(raf);
       ro.disconnect();
       host.removeEventListener("pointermove", onMove);
+      host.removeEventListener("pointerleave", onLeave);
+      host.removeEventListener("pointercancel", onLeave);
       document.removeEventListener("visibilitychange", gate);
     };
   }, []);
@@ -744,7 +823,7 @@ export default function VectorWordmark(props: VectorWordmarkProps) {
         background,
         width: "100%",
         height: "100%",
-        minHeight: "420px",
+        minHeight: style?.minHeight ?? 0,
         ...style,
       }}
     >
@@ -772,8 +851,8 @@ export default function VectorWordmark(props: VectorWordmarkProps) {
         </>
       ) : (
         /* Graceful SVG fallback for unsupported environments */
-        <div className="absolute inset-0 flex items-center justify-center p-8">
-          <h1 className="text-6xl sm:text-8xl md:text-9xl font-black tracking-tight uppercase bg-gradient-to-b from-white via-neutral-200 to-neutral-500 bg-clip-text text-transparent">
+        <div className="absolute inset-0 flex items-center justify-center p-4 sm:p-8">
+          <h1 className="text-3xl xs:text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-black tracking-tight uppercase bg-gradient-to-b from-white via-neutral-200 to-neutral-500 bg-clip-text text-transparent text-center break-words select-none">
             {text}
           </h1>
         </div>

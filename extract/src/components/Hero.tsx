@@ -46,7 +46,7 @@ export default function Hero({
       <div className="relative z-10 w-full max-w-7xl mx-auto flex items-center justify-between pt-2 sm:pt-4">
         <div className="flex items-center gap-3">
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#F5A623]" />
-          <p className="text-[11px] sm:text-xs font-mono font-medium tracking-[0.24em] text-neutral-400 uppercase">
+          <p className="text-[11px] sm:text-xs font-mono font-medium tracking-[0.16em] sm:tracking-[0.24em] text-neutral-400 uppercase">
             SOCIETAL INNOVATION PLATFORM
           </p>
         </div>
@@ -63,9 +63,9 @@ export default function Hero({
       </div>
 
       {/* Centerpiece: Interactive Vector Wordmark */}
-      <div className="relative z-10 w-full flex-1 flex flex-col items-center justify-center py-4 my-auto min-h-[360px] sm:min-h-[460px] lg:min-h-[520px]">
+      <div className="relative z-10 w-full flex-1 flex flex-col items-center justify-center py-2 sm:py-4 my-auto min-h-[240px] sm:min-h-[420px] lg:min-h-[520px]">
         {/* Vector Canvas Container */}
-        <div className="w-full h-[320px] sm:h-[440px] lg:h-[500px] max-w-7xl relative mx-auto rounded-xl">
+        <div className="w-full h-[220px] xs:h-[260px] sm:h-[380px] lg:h-[500px] max-w-7xl relative mx-auto rounded-xl">
           <VectorWordmark
             text={wordmarkConfig.text}
             accent={wordmarkConfig.accent}
@@ -98,7 +98,7 @@ export default function Hero({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-end border-t border-white/[0.08] pt-8">
           {/* Main Headline */}
           <div className="lg:col-span-7 space-y-4">
-            <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white uppercase text-balance leading-none">
+            <h1 className="text-xl sm:text-3xl md:text-4xl lg:text-5xl font-black tracking-tight text-white uppercase text-balance leading-tight sm:leading-none">
               REAL PROBLEMS. REAL PEOPLE.{" "}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-white via-neutral-200 to-[#F5A623]">
                 REAL IMPACT.

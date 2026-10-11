@@ -28,7 +28,7 @@ export default function ProjectShowcase() {
             studentTeamSize: 0,
             industrySponsor: 'Awaiting Sponsor',
             impactMetric: 'N/A',
-            urgency: 'High',
+            urgency: 'High' as const,
             timeline: `Reported on ${new Date(item.created_at).toLocaleDateString()}`
           }));
           setBackendChallenges(mapped);
